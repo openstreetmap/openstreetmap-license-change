@@ -61,14 +61,15 @@ class Server
     return requests
   end
 
-  def create_changeset(comment, input_changesets)
+  def create_changeset(comment, input_changesets, user_mode)
+    # user_mode is true if we do not redact changesets
     changeset_request = <<EOF
 <osm>
   <changeset>
-    <tag k="created_by" v="Redaction bot"/>
+    <tag k="created_by" v="#{user_mode ? "Redaction bot – community edition" : "Redaction bot"}"/>
     <tag k="bot" v="yes"/>
-    <tag k="comment" v="#{comment}"/>
-    <tag k="redacted_changesets" v="#{input_changesets.join(",")}"/>
+    <tag k="comment" v="#{comment}"/>#{user_mode ? "" : "
+    <tag k='redacted_changesets' v='#{input_changesets.join(",")}'/>"}
   </changeset>
 </osm>
 EOF
@@ -112,12 +113,24 @@ EOF
     end
   end
 
-  def redact(klass, elt_id, version, red_id)
+  ##
+  # Get a string which is either 'node', 'way' or 'relation'
+  def get_object_type_as_name(klass)
     name = case klass.name
            when "OSM::Node" then 'node'
            when "OSM::Way" then 'way'
            when "OSM::Relation" then 'relation'
            end
+    return name
+  end
+
+  def write_redact_command(klass, elt_id, version, fp)
+    name = get_object_type_as_name(klass)
+    fp.puts "perl redaction.pl #{elt_id} #{name} #{version}\n"
+  end
+
+  def redact(klass, elt_id, version, red_id)
+    name = get_object_type_as_name(klass)
     
     if @dry_run
       puts "Pretending to redact #{name}/#{elt_id}/#{version} with redaction id=#{red_id}"
@@ -232,15 +245,27 @@ class ServerDB < DB
   end
 end
 
-def process_redactions(bot, server, redaction_id)
-  bot.redactions.each do |redaction|
-    server.redact(redaction.klass, redaction.element_id, redaction.version, redaction_id)
+def process_redactions(bot, server, redaction_id, redact_pl_file)
+  if redaction_id == 0
+    begin
+      fp = File.open(redact_pl_file, 'w')
+      fp.puts "#! /usr/bin/bash\n"
+      bot.redactions.each do |redaction|
+        server.write_redact_command(redaction.klass, redaction.element_id, redaction.version, fp)
+      end
+    ensure
+      fp.close
+    end
+  else
+    bot.redactions.each do |redaction|
+      server.redact(redaction.klass, redaction.element_id, redaction.version, redaction_id)
+    end
   end
 end
 
-def process_changeset(changesets, db, server, comment, input_changesets)
+def process_changeset(changesets, db, server, comment, input_changesets, user_mode)
   change_doc = ""
-  cs_id = server.create_changeset(comment, input_changesets)
+  cs_id = server.create_changeset(comment, input_changesets, user_mode)
   OSM::print_osmchange(changesets, db, change_doc, cs_id)
   server.upload(change_doc, cs_id)
 end
@@ -292,7 +317,7 @@ def compare(a, b)
   aid <=> bid
 end
 
-options = { :config => 'auth.yaml', :threads => 4, :dry_run => false }
+options = { :config => 'auth.yaml', :threads => 4, :dry_run => false, :redact_pl_file => '' }
 oparser = OptionParser.new do |opts|
   opts.on("-c", "--config CONFIG", "YAML config file to use.") do |c|
     options[:config] = c
@@ -314,6 +339,10 @@ oparser = OptionParser.new do |opts|
     options[:dry_run] = true
   end
 
+  opts.on("-u FILE", "--user_mode FILE", "Don't redact the objects, write instead a bash script which calls redact.pl from woodpeck's osm-revert-scripts to FILE") do |u|
+    options[:redact_pl_file] = u
+  end
+
   opts.on("-e", "--edits_blacklist FILE", "edits blacklist file to redact") do |e|
     options[:edits_blacklist] = e
   end
@@ -331,8 +360,19 @@ else
 end
 if options.has_key? :redaction_id
   redaction_id = options[:redaction_id]
+  redact_pl_file = ''
+elsif options[:redact_pl_file] != ''
+  redaction_id = 0
+  redact_pl_file = options[:redact_pl_file]
+  if options.has_key? :redaction_id
+    # If both redaction_id and redact_pl_file are set, it's unclear what the user wants. Therefore stop execution her.
+    puts "You must either give a redaction ID to use (if you want and are allowed to redact) or give a file where to write the commands for the redaction."
+    puts
+    puts oparser
+    exit(1)
+  end
 else
-  puts "You must give a redaction ID to use."
+  puts "You must give a redaction ID to use or – if you do not have the permissions to redact or do not want to redact, give a file where to write the redact.pl commands."
   puts
   puts oparser
   exit(1)
@@ -469,21 +509,25 @@ changeset = bot.as_changeset
 
 if changeset.empty?
   puts "No changeset to apply"
-  process_redactions(bot, server, redaction_id)
+  process_redactions(bot, server, redaction_id, redact_pl_file)
 
 else
   begin
     changeset.sort! {|a, b| compare(a, b)}
     changeset.each_slice(MAX_CHANGESET_ELEMENTS) do |slice|
       puts "Uploading #{slice.size} elements of #{changeset.size} total"
-      process_changeset(slice, db, server, comment, input_changesets)
+      if redaction_id == 0
+        process_changeset(slice, db, server, comment, input_changesets, true)
+      else
+        process_changeset(slice, db, server, comment, input_changesets, false)
+      end
     end
 
   rescue Exception => e
     puts "Failed to upload a changeset: #{e}\n#{e.backtrace}"
 
   else
-    process_redactions(bot, server, redaction_id)
+    process_redactions(bot, server, redaction_id, redact_pl_file)
   end
 end
 
