@@ -126,7 +126,7 @@ EOF
 
   def write_redact_command(klass, elt_id, version, fp)
     name = get_object_type_as_name(klass)
-    fp.puts "perl redaction.pl #{elt_id} #{name} #{version}\n"
+    fp.puts "perl redaction.pl apply #{name} #{elt_id} #{version}\n"
   end
 
   def redact(klass, elt_id, version, red_id)
