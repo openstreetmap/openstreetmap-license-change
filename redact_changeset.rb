@@ -13,7 +13,7 @@ require 'yaml'
 require 'optparse'
 require 'typhoeus'
 
-MAX_CHANGESET_ELEMENTS = 500
+MAX_CHANGESET_ELEMENTS = 1000
 
 class Server
   def initialize(file, dry_run)
