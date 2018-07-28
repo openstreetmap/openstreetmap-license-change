@@ -102,7 +102,13 @@ EOF
       tries = 0
       loop do
         response = @access_token.post("/api/0.6/changeset/#{changeset_id}/upload", change_doc, {'Content-Type' => 'text/xml' })
-        break if response.code == '200'
+        if response.code == '200'
+          # Just try once to close the changeset and simply ignore any
+          # possible errors; If we could not close it, it will be
+          # automatically closed after some time
+          @access_token.put("/api/0.6/changeset/#{changeset_id}/close")
+          break
+        end
         tries += 1
         if tries >= @max_retries
           # It's quite likely for a changeset to fail, if someone else is editing in the area being processed
