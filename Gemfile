@@ -5,6 +5,7 @@ gem 'algorithms'
 gem 'libxml-ruby'
 gem 'mechanize'
 gem 'oauth'
+gem "oauth2", "~> 2.0"
 gem 'pg'
 gem 'text'
 gem 'typhoeus'
