@@ -143,7 +143,7 @@ EOF
         uri = URI("#{@server}/api/0.6/#{path}")
         puts "GET: #{uri}"
         http = Net::HTTP.new(uri.host, uri.port)
-        http.use_ssl = true
+        http.use_ssl = uri.scheme == 'https'
         http.read_timeout = 320
         
         response = http.request_get(uri.request_uri)

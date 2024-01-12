@@ -273,6 +273,7 @@ def map_call(area, attempt = 1)
 
     uri = URI(url)
     http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = uri.scheme == 'https'
     http.read_timeout = 320 # api timeout is 300
     response = http.request_get(uri.request_uri)
 
