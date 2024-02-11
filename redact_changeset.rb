@@ -8,7 +8,7 @@ require './change_bot'
 require 'net/http'
 require 'nokogiri'
 require 'set'
-require 'oauth'
+require 'oauth2'
 require 'yaml'
 require 'optparse'
 require 'typhoeus'
@@ -17,21 +17,20 @@ MAX_CHANGESET_ELEMENTS = 1000
 
 class Server
   def initialize(file, dry_run)
-    auth = YAML.load(File.open(file))
-    oauth = auth['oauth']
-    @server = oauth['site']
+    y = YAML.load(File.open(file))
+    @server = y["oauth2"]["site"]
     @dry_run = dry_run
 
     unless @dry_run
-      @consumer=OAuth::Consumer.new(oauth['consumer_key'],
-                                    oauth['consumer_secret'],
-                                    {:site=>oauth['site']})
-      
-      @consumer.http.open_timeout = 320
-      @consumer.http.read_timeout = 320
-      
+      @client = OAuth2::Client.new y["oauth2"]["client_id"],
+                                   nil,
+                                   {:site=>y["oauth2"]["site"],
+                                    :redirect_uri=>"urn:ietf:wg:oauth:2.0:oob",
+                                    :authorize_url=>"/oauth2/authorize",
+                                    :token_url=>"/oauth2/token"}
+
       # Create the access_token for all traffic
-      @access_token = OAuth::AccessToken.new(@consumer, oauth['token'], oauth['token_secret'])
+      @access_token = OAuth2::AccessToken.new(@client, y["oauth2"]["token"])
     end
 
     @max_retries = 3
@@ -80,11 +79,11 @@ EOF
 
     else
       loop do
-        response = @access_token.put('/api/0.6/changeset/create', changeset_request, {'Content-Type' => 'text/xml' })
-        break if response.code == '200'
+        response = @access_token.put('/api/0.6/changeset/create', :body => changeset_request, :headers => {'Content-Type' => 'text/xml' }).response
+        break if response.status == 200
         tries += 1
         if tries >= @max_retries
-          raise "Failed to open changeset. Most recent response code: #{response.code}:\n#{response.body}"
+          raise "Failed to open changeset. Most recent response status: #{response.status}:\n#{response.body}"
         end
       end
       
@@ -101,12 +100,12 @@ EOF
     else
       tries = 0
       loop do
-        response = @access_token.post("/api/0.6/changeset/#{changeset_id}/upload", change_doc, {'Content-Type' => 'text/xml' })
-        break if response.code == '200'
+        response = @access_token.post("/api/0.6/changeset/#{changeset_id}/upload", :body => change_doc, :headers => {'Content-Type' => 'text/xml' }).response
+        break if response.status == 200
         tries += 1
         if tries >= @max_retries
           # It's quite likely for a changeset to fail, if someone else is editing in the area being processed
-          raise "Changeset failed to apply. Most recent response code: #{response.code}:\n#{response.body}"
+          raise "Changeset failed to apply. Most recent response status: #{response.status}:\n#{response.body}"
         end
       end
     end
@@ -125,11 +124,11 @@ EOF
     else
       tries = 0
       loop do
-        response = @access_token.post("/api/0.6/#{name}/#{elt_id}/#{version}/redact?redaction=#{red_id}")
-        break if response.code == '200'
+        response = @access_token.post("/api/0.6/#{name}/#{elt_id}/#{version}/redact?redaction=#{red_id}").response
+        break if response.status == 200
         tries += 1
         if tries >= @max_retries
-          raise "Failed to redact element. Most recent response code: #{response.code} (#{response.body})"
+          raise "Failed to redact element. Most recent response status: #{response.status} (#{response.body})"
         end
       end
     end
