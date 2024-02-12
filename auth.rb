@@ -1,3 +1,5 @@
+require 'oauth2'
+
 module Auth
   def self.access_token(y)
     client = OAuth2::Client.new y["oauth2"]["client_id"],
