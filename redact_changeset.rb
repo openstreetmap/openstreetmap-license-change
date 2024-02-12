@@ -5,6 +5,7 @@ require './changeset'
 require './user'
 require './db'
 require './change_bot'
+require './auth'
 require 'net/http'
 require 'nokogiri'
 require 'set'
@@ -22,13 +23,7 @@ class Server
     @dry_run = dry_run
 
     unless @dry_run
-      @client = OAuth2::Client.new y["oauth2"]["client_id"],
-                                   nil,
-                                   { :site => y["oauth2"]["site"],
-                                     :connection_opts =>{ :request => { :open_timeout => 320, :read_timeout => 320 } } }
-
-      # Create the access_token for all traffic
-      @access_token = OAuth2::AccessToken.new(@client, y["oauth2"]["token"])
+      @access_token = Auth.access_token y
     end
 
     @max_retries = 3
