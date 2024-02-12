@@ -6,8 +6,8 @@
 # application, and each user gets the access_token stuff
 # But hey, this is just a demo.
 
+require './auth'
 require 'rubygems'
-require 'oauth2'
 require 'yaml'
 
 y = YAML.load(File.open('auth.yaml'))
@@ -30,12 +30,7 @@ y["oauth2"]["client_id"] = gets.strip
 puts "Your application is now set up, but you need to register"
 puts "this instance of it with your user account."
 
-@client=OAuth2::Client.new y["oauth2"]["client_id"],
-                           nil,
-                           {:site=>y["oauth2"]["site"],
-                            :redirect_uri=>"urn:ietf:wg:oauth:2.0:oob",
-                            :authorize_url=>"/oauth2/authorize",
-                            :token_url=>"/oauth2/token"}
+@client = Auth.client y
 
 puts "Visit the following URL, log in if you need to, and authorize the app"
 puts @client.auth_code.authorize_url(:scope => "write_api write_redactions")
