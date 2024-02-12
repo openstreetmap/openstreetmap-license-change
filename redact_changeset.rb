@@ -73,7 +73,7 @@ EOF
     else
       loop do
         response = @access_token.put('/api/0.6/changeset/create', :body => changeset_request, :headers => {'Content-Type' => 'text/xml' }).response
-        break if response.status == 200
+        break if response.success?
         tries += 1
         if tries >= @max_retries
           raise "Failed to open changeset. Most recent response status: #{response.status}:\n#{response.body}"
@@ -94,7 +94,7 @@ EOF
       tries = 0
       loop do
         response = @access_token.post("/api/0.6/changeset/#{changeset_id}/upload", :body => change_doc, :headers => {'Content-Type' => 'text/xml' }).response
-        break if response.status == 200
+        break if response.success?
         tries += 1
         if tries >= @max_retries
           # It's quite likely for a changeset to fail, if someone else is editing in the area being processed
@@ -118,7 +118,7 @@ EOF
       tries = 0
       loop do
         response = @access_token.post("/api/0.6/#{name}/#{elt_id}/#{version}/redact?redaction=#{red_id}").response
-        break if response.status == 200
+        break if response.success?
         tries += 1
         if tries >= @max_retries
           raise "Failed to redact element. Most recent response status: #{response.status} (#{response.body})"
