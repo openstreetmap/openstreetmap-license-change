@@ -4,10 +4,10 @@
 require './pg_db'
 require './change_bot'
 require './osm_print'
+require './auth'
 
 require 'pg'
 require 'getoptlong'
-require 'oauth'
 require 'yaml'
 require 'xml/libxml'
 require 'logger'
@@ -137,8 +137,8 @@ def process_changeset(changeset)
           <tag k="comment" v="Updates based on the redaction process"/>
         </changeset>
       </osm>'
-  response = @access_token.put('/api/0.6/changeset/create', changeset_request, {'Content-Type' => 'text/xml' })
-  unless response.code == '200'
+  response = @access_token.put('/api/0.6/changeset/create', changeset_request, {'Content-Type' => 'text/xml' }).response
+  unless response.success?
     @log.error("Failed to open changeset!")
     raise "Failed to open changeset"
   end
@@ -151,10 +151,10 @@ def process_changeset(changeset)
   @log.debug( "Changeset:\n" + change_doc )
 
   unless @no_action
-    response = @access_token.post("/api/0.6/changeset/#{changeset_id}/upload", change_doc, {'Content-Type' => 'text/xml' })
-    unless response.code == '200'
+    response = @access_token.post("/api/0.6/changeset/#{changeset_id}/upload", change_doc, {'Content-Type' => 'text/xml' }).response
+    unless response.success?
       # It's quite likely for a changeset to fail, if someone else is editing in the area being processed
-      @log.error("Changeset failed to apply. Response #{response.code}:\n#{response.body}")
+      @log.error("Changeset failed to apply. Response #{response.status}:\n#{response.body}")
       @summary_changeset_fails += 1
       raise "Changeset failed to apply"
     end
@@ -220,9 +220,9 @@ def process_redactions(bot)
     @log.info("Redaction for #{klass} #{redaction.element_id} v#{redaction.version} #{redaction.mode}")
     unless @no_action
       redaction_id = redaction.mode == :visible ? @redaction_id_visible : @redaction_id_hidden
-      response = @access_token.post("/api/0.6/#{klass}/#{redaction.element_id}/#{redaction.version}/redact?redaction=#{redaction_id}") if not @no_action
-      unless response.code == '200'
-        @log.error("Failed to redact element - response: #{response.code} \n #{response.body}")
+      response = @access_token.post("/api/0.6/#{klass}/#{redaction.element_id}/#{redaction.version}/redact?redaction=#{redaction_id}").response if not @no_action
+      unless response.success?
+        @log.error("Failed to redact element - response: #{response.status} \n #{response.body}")
         raise "Failed to redact element"
       end
     end
@@ -341,24 +341,14 @@ TOO_SMALL_TO_SPLIT = 0.000001 # roughly 10cm at the equator
 MAX_CHANGESET_ELEMENTS = 500
 
 auth = YAML.load(File.open('auth.yaml'))
-oauth = auth['oauth']
 dbauth = auth['database']
 trackerauth = auth['tracker']
 
-@api_site = oauth['site']
+@api_site = auth['oauth2']['site']
 
 @tracker_conn = PGconn.open( :dbname => trackerauth['dbname'] )
 
-# The consumer key and consumer secret are the identifiers for this particular application, and are
-# issued when the application is registered with the site. Use your own.
-@consumer=OAuth::Consumer.new oauth['consumer_key'],
-                              oauth['consumer_secret'],
-                              {:site=>oauth['site']}
-
-@consumer.http.read_timeout = 320
-
-# Create the access_token for all traffic
-@access_token = OAuth::AccessToken.new(@consumer, oauth['token'], oauth['token_secret'])
+@access_token = Auth.access_token auth
 
 opts.each do |opt, arg|
   case opt
