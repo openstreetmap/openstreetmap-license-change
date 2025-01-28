@@ -7,7 +7,7 @@ this against an `apidb` format database, or possibly a live API.
 
 # Requirements
 
-To run this, you'll need Ruby (probably >=1.9.3) and some gems,
+To run this, you'll need Ruby (probably >=3.0) and some gems,
 which you can install with `bundle install`. Then you'll be able
 to run:
 
